@@ -45,16 +45,14 @@ Ray::Ray(vec3 pos, vec3 dir){
   this->t_max = FLT_MAX;
 }
 
-Intersection::Intersection(mat4 modelview){
-  this->hitDistance = -1.0;
-  this->modelview = modelview;
+Intersection::Intersection(){
+  this->hitDistance = -1;
 }
 
-Intersection::Intersection(float hitDistance, vec3 pos, vec3 normal, vec3 dir, Material material, mat4 modelview){
+Intersection::Intersection(float hitDistance, vec3 pos, vec3 normal, vec3 dir, Material material){
   this->hitDistance = hitDistance;
   this->pos = pos;
   this->normal = normal;
   this->dir = dir;
   this->material = material;
-  this->modelview = modelview;
 }

@@ -61,7 +61,7 @@ bool FlatTriangle::intersect(Ray& ray, float& t_hit, Intersection& in){
   
   t_hit = x[3];
   
-  in = Intersection(t_hit, pos, normal, ray.dir, this->material, in.modelview);
+  in = Intersection(t_hit, pos, normal, ray.dir, this->material);
     
   return true;
 }
@@ -115,7 +115,7 @@ bool Sphere::intersect(Ray& ray, float& t_hit, Intersection& in){
     
     float distance = glm::dot(myPos - ray.pos, ray.dir);
     
-    in = Intersection(distance, myPos, myNormal, ray.dir, this->material, in.modelview);
+    in = Intersection(distance, myPos, myNormal, ray.dir, this->material);
     
     return true;
   }
@@ -134,7 +134,7 @@ bool Sphere::intersect(Ray& ray, float& t_hit, Intersection& in){
     
     float distance = glm::dot(myPos - ray.pos, ray.dir);
     
-    in = Intersection(distance, myPos, myNormal, ray.dir, this->material, in.modelview);
+    in = Intersection(distance, myPos, myNormal, ray.dir, this->material);
     
     return true;
   }

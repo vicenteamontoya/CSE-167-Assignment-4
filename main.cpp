@@ -15,11 +15,14 @@
 #include <deque>
 #include <stack>
 #include "Camera.hpp"
-#pragma omp parallel for collapse(2)
 
 using namespace std;
 
 string OUTPUT_FILE = "raytrace.png";
+
+int MAXDEPTH = 5;
+
+int MAXVERTS = 0;
 
 void rightmultiply(const mat4 & M, stack<mat4> &transfstack)
 {
@@ -41,9 +44,21 @@ bool readvals(stringstream &s, const int numvals, float* values)
   return true;
 }
 
+bool readstring(stringstream &s, string& output)
+{
+  char c;
+  s >> c;
+  while(c != '\n'){
+    output += c;
+  }
+  return true;
+}
+
 void readfile(const char* filename, Camera& camera, Scene& scene){
   int width = 0;
   int height = 0;
+  
+  vec3 attenuation = vec3(1,0,0);
   
   vector<vec3> flatTriangleVerteces;
   
@@ -86,10 +101,6 @@ void readfile(const char* filename, Camera& camera, Scene& scene){
           }
         }
         
-        else if(cmd == "output") {
-          //Ignore for now
-        }
-        
         //Camera Command
         else if (cmd == "camera") {
           validinput = readvals(s,10,values); // 10 values eye cen up fov
@@ -110,7 +121,7 @@ void readfile(const char* filename, Camera& camera, Scene& scene){
           if (validinput) {
             vec3 pos = vec3(values[0], values[1], values[2]);
             Color color = Color(vec3(values[3], values[4], values[5]));
-            Light point = Light(pos, color, false);
+            Light point = Light(pos, color, false, attenuation);
             scene.addLight(point);
           }
         }
@@ -119,7 +130,7 @@ void readfile(const char* filename, Camera& camera, Scene& scene){
           if (validinput) {
             vec3 pos = vec3(values[0], values[1], values[2]);
             Color color = Color(vec3(values[3], values[4], values[5]));
-            Light directional = Light(pos, color, true);
+            Light directional = Light(pos, color, true, attenuation);
             scene.addLight(directional);
           }
         }
@@ -163,9 +174,30 @@ void readfile(const char* filename, Camera& camera, Scene& scene){
         }
           
         else if (cmd == "maxverts") {
-          //Ignore
+          validinput = readvals(s, 1, values);
+          if (validinput) {
+            MAXVERTS = (int) values[0];
+          }
         }
-      
+        
+        else if (cmd == "maxdepth"){
+          validinput = readvals(s, 1, values);
+          if (validinput) {
+            MAXDEPTH = (int) values[0];
+          }
+        }
+        
+        else if (cmd == "output"){
+          s >> OUTPUT_FILE;
+        }
+        
+        else if (cmd == "attenuation") {
+          validinput = readvals(s, 3, values);
+          if (validinput) {
+            attenuation = vec3(values[0], values[1], values[2]);
+          }
+        }
+        
         else if (cmd == "vertex") {
           validinput = readvals(s, 3, values);
           if (validinput) {
@@ -195,7 +227,7 @@ void readfile(const char* filename, Camera& camera, Scene& scene){
             float radius = values[3];
             
             mat4 transform = transfstack.top();
-            
+                      
             Sphere* sphere = new Sphere(pos, radius, material, transform);
             scene.addPrimitive(sphere);
           }
@@ -264,7 +296,7 @@ int main(int argc, char* argv[]){
   
   readfile(filename.c_str(), camera, scene);
 
-  camera.render(scene);
+  camera.render(scene, MAXDEPTH);
   
   camera.saveImage(OUTPUT_FILE);
 }

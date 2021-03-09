@@ -6,7 +6,6 @@
 //
 
 #include "Camera.hpp"
-#pragma omp parallel for collapse(2)
 
 using namespace std;
 
@@ -26,15 +25,17 @@ void Scene::addLight(Light light){
   lights.push_back(light);
 }
 
-Intersection Scene::findIntersection(Ray ray, mat4 modelview){
+Intersection Scene::findIntersection(Ray ray){
   float closestT = FLT_MAX;
-  Intersection closestIn = Intersection(modelview);
+  Intersection closestIn = Intersection();
   for(Primitive* p : primitives){
     float t_hit = 0;
-    Intersection in = Intersection(modelview);
+    Intersection in = Intersection();
     if(p->intersect(ray, t_hit, in)){
-      if(in.hitDistance < closestT){
-        closestT = t_hit;
+      if(in.hitDistance < closestT && in.hitDistance > 0){
+        closestT = in.hitDistance;
+        //fprintf(stderr, "New Closest T_hit: %f \n", closestT);
+        
         closestIn = in;
       }
     }
@@ -143,121 +144,163 @@ float min(float a, float b){
 
 vec3 ComputeLight (vec3 direction, vec3 lightcolor, vec3 normal, vec3 halfvec, vec3 diffuse, vec3 specular, float shininess) {
   float nDotL = glm::dot(normal, direction)  ;
-  vec3 lambert = diffuse * lightcolor * max(nDotL, 0.0) ;
+  vec3 lambert = diffuse * max(nDotL, 0.0) ;
 
   float nDotH = glm::dot(normal, halfvec) ;
-  vec3 phong = specular * lightcolor * pow(max(nDotH, 0.0), shininess) ;
-
-  return lambert + phong ;
+  vec3 phong = specular * pow(max(nDotH, 0.0), shininess) ;
+  
+  vec3 color = (lambert + phong) * lightcolor;
+  
+  return (lambert + phong) * lightcolor ;
 }
 
-mat4 produceLookAt(vec3 pos, vec3 dir, vec3 normal){
-  vec3 center = pos + dir;
-  vec3 up = normal;
-  return Transform::lookAt(pos, center, up);
-}
-
-void findColor(Intersection& in, Scene& scene, int recursionLevel){
+void findColor(Ray ray, Intersection& in, Scene& scene, int recursionLevel){
+  //fprintf(stderr, "Recursion Level: %d \n", recursionLevel);
+  
   if(recursionLevel == 0){
     return;
   }
   
   Material material = in.material;
+  
   vec3 finalColor = material.ambient.rgb + material.emission.rgb;
   
   vec3 diffuse = material.diffuse.rgb;
+  
   vec3 specular = material.specular.rgb;
+  
   float shininess = material.shininess;
   
-  mat4 modelview = in.modelview;
+//  fprintf(stderr, "Ambient: (%f, %f, %f) \n", material.ambient.rgb[0], material.ambient.rgb[1], material.ambient.rgb[2]);
+//  fprintf(stderr, "Emission: (%f, %f, %f) \n", material.emission.rgb[0], material.emission.rgb[1], material.emission.rgb[2]);
+//  fprintf(stderr, "Diffuse: (%f, %f, %f) \n", diffuse[0], diffuse[1], diffuse[2]);
+//  fprintf(stderr, "Specular: (%f, %f, %f) \n", specular[0], specular[1], specular[2]);
+//  fprintf(stderr, "Shininess: %f \n", shininess);
   
-  vec4 myvertex = vec4(in.pos, 1);
-  vec3 mynormal = in.normal;
+  vec3 eyepos = ray.pos;
   
-  const vec3 eyepos = vec3(0,0,0);
-  vec4 vertex = modelview * myvertex;
+  vec3 eyedirn = -ray.dir;
   
-  vec3 mypos = vec3(vertex.x, vertex.y, vertex.z) / vertex.w ; // Dehomogenize current location
-  vec3 eyedirn = glm::normalize(eyepos - mypos) ;
+  vec3 normal = in.normal;
   
-  mat4 modelviewTI = glm::transpose(glm::inverse(modelview));
-  vec4 transformedNormal = modelviewTI * (vec4(mynormal, 0));
-  vec3 normal = glm::normalize(vec3(transformedNormal.x, transformedNormal.y, transformedNormal.z));
+//  fprintf(stderr, "Hit Position: (%f, %f, %f) \n", in.pos[0], in.pos[1], in.pos[2]);
+//
+//  fprintf(stderr, "Hit Normal: (%f, %f, %f) \n", normal[0], normal[1], normal[2]);
+
   
   for(Light light : scene.lights){
     vec3 lightcol = light.color.rgb;
     
+    float epsilon = 0.05;
+    
+    
     if(light.directional){
-      float epsilon = 0.01;
       vec3 shadowRayDir = light.vector;
+      
       vec3 posWithEpsilon = in.pos + (epsilon * shadowRayDir);
+      
       Ray shadowRay = Ray(posWithEpsilon, shadowRayDir);
-      Intersection hit = scene.findIntersection(shadowRay, mat4(1.0));
+      
+      Intersection hit = scene.findIntersection(shadowRay);
       
       if(hit.hitDistance < 0){
-        vec4 directionH = modelview * vec4(light.vector, 0);
-        vec3 direction = glm::normalize(vec3(directionH[0], directionH[1], directionH[2]));
+        
+        vec3 direction = light.vector;
+        
         vec3 halfvec = normalize(direction + eyedirn);
+        
         vec3 col = ComputeLight(direction, lightcol, normal, halfvec, diffuse, specular, shininess);
+        
         finalColor += col;
       }
     
     }
     else{
-      float epsilon = 0.01;
       vec3 shadowRayDir = glm::normalize(light.vector - in.pos);
+      
       vec3 posWithEpsilon = in.pos + (epsilon * shadowRayDir);
+//
+//      fprintf(stderr, "Ray from intersection to light, origin: (%f, %f, %f) \n", posWithEpsilon[0], posWithEpsilon[1], posWithEpsilon[2]);
+//
+//      fprintf(stderr, "Ray from intersection to light, direction: (%f, %f, %f) \n", shadowRayDir[0], shadowRayDir[1], shadowRayDir[2]);
+      
       Ray shadowRay = Ray(posWithEpsilon, shadowRayDir);
       
-      Intersection hit = scene.findIntersection(shadowRay, mat4(1.0));
+      Intersection hit = scene.findIntersection(shadowRay);
       
       float distanceToLight = glm::distance(light.vector, posWithEpsilon);
       
+      //fprintf(stderr, "Distance to Light: %f \n", distanceToLight);
+      
       if(hit.hitDistance > distanceToLight || hit.hitDistance < 0){
         
-        float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distanceToLight + light.attenuation.z * pow(distanceToLight, 2));
+        float attenuation = 1.0 / ( (light.attenuation.x) + (light.attenuation.y * distanceToLight) + (light.attenuation.z * pow(distanceToLight, 2)));
 
         lightcol = lightcol * attenuation;
 
-        vec4 positionH = modelview * vec4(light.vector, 1);
-        vec3 position = vec3(positionH[0], positionH[1], positionH[2]) / positionH[3];
-
-        vec3 direction = normalize (position - mypos); // no attenuation
-        vec3 halfvec = normalize (direction + eyedirn);
+        vec3 direction = normalize(light.vector - in.pos); // no attenuation
+        
+        //fprintf(stderr, "Eye Direction: (%f, %f, %f) \n", eyedirn[0], eyedirn[1], eyedirn[2]);
+        
+        vec3 halfvec = normalize(direction + eyedirn);
+        
+//        fprintf(stderr, "Half Vector: (%f, %f, %f) \n", halfvec[0], halfvec[1], halfvec[2]);
+//
+//        fprintf(stderr, "Attenuation: %f \n", (light.attenuation.x + light.attenuation.y * distanceToLight + light.attenuation.z * pow(distanceToLight, 2)));
+        
         vec3 col = ComputeLight(direction, lightcol, normal, halfvec, diffuse, specular, shininess);
+        
         finalColor += col;
+        
+        //fprintf(stderr, "Color: (%f, %f, %f) \n", finalColor[0], finalColor[1], finalColor[2]);
       }
     }
   }
   
-  float epsilon = 0.01;
-  vec3 reflectedRayDir = in.dir - ((2 * dot(in.dir, in.normal)) * in.normal) ;
+  
+  float epsilon = 0.05;
+  
+  vec3 reflectedRayDir = ((2 * dot(eyedirn, normal)) * normal) - eyedirn;
+  
   vec3 posWithEpsilon = in.pos + (epsilon * reflectedRayDir);
   
+//  fprintf(stderr, "Reflected Ray Origin: (%f, %f, %f) \n", posWithEpsilon[0], posWithEpsilon[1], posWithEpsilon[2]);
+//
+//  fprintf(stderr, "Reflected Ray Direction: (%f, %f, %f) \n", reflectedRayDir[0], reflectedRayDir[1], reflectedRayDir[2]);
+  
   Ray reflectedRay = Ray(posWithEpsilon, reflectedRayDir);
-  Intersection hit = scene.findIntersection(reflectedRay, produceLookAt(in.pos, reflectedRayDir, in.normal));
+  
+  Intersection hit = scene.findIntersection(reflectedRay);
+  
+//  fprintf(stderr, "Hit Position: (%f, %f, %f) \n", hit.pos[0], hit.pos[1], hit.pos[2]);
+//
+//  fprintf(stderr, "Hit Normal: (%f, %f, %f) \n", hit.normal[0], hit.normal[1], hit.normal[2]);
+//
+//  fprintf(stderr, "Hit Distance: %f \n", hit.hitDistance);
   
   if(hit.hitDistance > 0){
-    findColor(hit, scene, recursionLevel - 1);
-    for(int i = 0; i < scene.lights.size(); i++){
-      finalColor += specular * hit.shade.rgb;
-    }
+    
+    findColor(reflectedRay, hit, scene, recursionLevel - 1);
+    
+    finalColor += specular * hit.shade.rgb;
+  
   }
   
   in.shade = Color(finalColor);
 }
 
 
-void Camera::render(Scene &s){
+void Camera::render(Scene &s, int maxdepth){
   Image image = Image(width, height);
   
+  #pragma omp parallel for collapse(2)
   for (int i=0; i< height; i++){
     for (int j=0; j< width; j++){
       Ray ray = RayThruPixel(i, j);
-      Intersection hit = s.findIntersection(ray, this->lookAt());
-      
+      Intersection hit = s.findIntersection(ray);
+
       if(hit.hitDistance > 0){
-        findColor(hit, s, 5);
+        findColor(ray, hit, s, maxdepth);
         int r = (int) (min(hit.shade.rgb[0]*255, 255));
         int g = (int) (min(hit.shade.rgb[1]*255, 255));
         int b = (int) (min(hit.shade.rgb[2]*255, 255));

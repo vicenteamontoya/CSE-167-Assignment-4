@@ -37,7 +37,7 @@ class Scene{
     void addPrimitive(Primitive* p);
     void addLight(Light light);
     
-    Intersection findIntersection(Ray ray, mat4 modelview);
+    Intersection findIntersection(Ray ray);
   
     vector<Primitive*> primitives;
     vector<Light> lights;
@@ -51,7 +51,7 @@ class Camera{
   
     mat4 lookAt();
   
-    void render(Scene &s);
+    void render(Scene &s, int maxdepth);
     void saveImage(string filename);
     
     float getFOVX();

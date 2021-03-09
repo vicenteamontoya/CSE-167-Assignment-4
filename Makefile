@@ -1,4 +1,4 @@
-CC = clang++
+CC = g++
 CFLAGS = -Wno-deprecated-declarations -Wno-shift-op-parentheses -Xpreprocessor -fopenmp
 INCFLAGS = -I./glm-0.9.7.1 -I/usr/local/opt/llvm/include -I./include/ -std=c++11
 LDFLAGS = -L./lib/mac/ -L/usr/local/opt/llvm/lib -lm -lfreeimage -lomp
